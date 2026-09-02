@@ -1,0 +1,1017 @@
+// ============================================================
+// 慧友酒店经营核算平台 - Prisma Schema
+// ============================================================
+// Phase 2: Database Implementation
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 组织层级 (Organization Hierarchy)
+// ============================================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  status    OrgStatus @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  regions Region[]
+
+  @@map("organizations")
+}
+
+enum OrgStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Region {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  status         RegionStatus @default(ACTIVE)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  hotels      Hotel[]
+  users       User[]
+
+  @@index([organizationId])
+  @@map("regions")
+}
+
+enum RegionStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Hotel {
+  id          String   @id @default(cuid())
+  regionId    String
+  code        String   @unique
+  name        String
+  physicalRoomCount Int @default(0)  // 物理总房间数 (CONFIRMED)
+  status      HotelStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  region       Region      @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  users        User[]
+  dailyOperations DailyOperation[]
+
+  // 库存
+  inventoryItems InventoryItem[]
+
+  // 目标
+  monthlyTargets  MonthlyTarget[]
+  weeklyTargets   WeeklyTarget[]
+  dailyTargets    DailyTarget[]
+
+  // 管理费
+  managementFees ManagementFee[]
+
+  // 分摊配置
+  allocationConfigs AllocationConfig[]
+
+  // 库存
+  inventoryTransactions InventoryTransaction[]
+
+  // 业绩预定
+  forecastPlans ForecastPlan[]
+
+  // 业绩预定 V2
+  forecastMonths ForecastMonth[]
+
+  // 历史参考数据
+  historicalMonthlyData HistoricalMonthlyData[]
+
+  @@index([regionId])
+  @@map("hotels")
+}
+
+enum HotelStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// ============================================================
+// 用户与权限 (User & Role)
+// ============================================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole
+  hotelId   String?
+  regionId  String?
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hotel  Hotel?  @relation(fields: [hotelId], references: [id], onDelete: SetNull)
+  region Region? @relation(fields: [regionId], references: [id], onDelete: SetNull)
+
+  // 操作记录
+  auditLogs AuditLog[]
+
+  @@index([hotelId])
+  @@index([regionId])
+  @@index([role])
+  @@map("users")
+}
+
+enum UserRole {
+  HOTEL_MANAGER    // 店长
+  REGIONAL_DIRECTOR // 区域运营总监
+  ADMIN            // 系统管理员
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// ============================================================
+// 日经营记录 (Daily Operation - Core Aggregate Root)
+// ============================================================
+
+model DailyOperation {
+  id          String   @id @default(cuid())
+  hotelId     String
+  businessDate DateTime  // 营业日期，独立于 createdAt
+
+  status      DailyOperationStatus @default(DRAFT)
+
+  // 提交信息
+  submittedAt     DateTime?
+  submittedBy     String?
+  reviewedAt     DateTime?
+  reviewedBy     String?
+  rejectionReason String?
+
+  // 截止时间: businessDate + 1 day 18:00
+  submissionDeadline DateTime
+
+  // 关联实体
+  hotel       Hotel     @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+  revenue     Revenue?
+  variableCost VariableCost?
+  laborCost   LaborCost?
+  commissionCost CommissionCost?
+  fixedCost   FixedCost?
+  energy     Energy?
+  calculationResult CalculationResult?
+
+  // 元数据
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联实体 - 显式反向关系
+  anomalies   Anomaly[]
+  inventoryTransactions InventoryTransaction[]
+
+  // 索引 - 核心查询: Hotel + businessDate
+  @@unique([hotelId, businessDate])
+  @@index([hotelId])
+  @@index([businessDate])
+  @@index([status])
+  @@index([hotelId, status])
+  @@index([hotelId, businessDate])
+
+  // 房态数据
+  roomStatus RoomStatus?
+
+  @@map("daily_operations")
+}
+
+// ============================================================
+// 每日房态数据 (Room Status - 店长录入)
+// ============================================================
+model RoomStatus {
+  id              String  @id @default(cuid())
+  dailyOperationId String @unique
+
+  // 房态（店长录入）
+  soldRooms      Int @default(0)  // 实际出租房间数 (CONFIRMED)
+
+  // 以下由系统计算 (CONFIRMED 公式)
+  // occupancyRate = soldRooms / physicalRoomCount
+  // adr = roomRevenue / soldRooms
+  // revpar = roomRevenue / physicalRoomCount
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dailyOperation DailyOperation @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+
+  @@map("room_statuses")
+}
+
+enum DailyOperationStatus {
+  DRAFT      // 草稿
+  SUBMITTED  // 已提交
+  REJECTED   // 已驳回
+  APPROVED   // 已审核
+}
+
+// ============================================================
+// 收入 (Revenue)
+// ============================================================
+
+model Revenue {
+  id              String  @id @default(cuid())
+  dailyOperationId String @unique
+
+  // 收入项目（人工录入）
+  roomRevenue    Decimal @db.Decimal(12,2)  // 房费收入
+  minibarRevenue Decimal @db.Decimal(12,2)  // 迷你吧收入
+  foodRevenue    Decimal @db.Decimal(12,2)  // 餐费收入
+  otherRevenue   Decimal @db.Decimal(12,2)  // 其他业务收入
+
+  // 计算得出
+  totalRevenue   Decimal @db.Decimal(12,2)  // 合计
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dailyOperation DailyOperation @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+
+  @@map("revenues")
+}
+
+// ============================================================
+// 变动成本 (Variable Cost)
+// ============================================================
+
+model VariableCost {
+  id              String  @id @default(cuid())
+  dailyOperationId String @unique
+
+  // 各变动成本项
+  roomSuppliesCost    Decimal @db.Decimal(12,2)  // 客房耗材
+  frontDeskItemsCost Decimal @db.Decimal(12,2)  // 前台增值物品
+  merchandiseCost    Decimal @db.Decimal(12,2)  // 小商品
+  laundryCost        Decimal @db.Decimal(12,2)  // 洗涤费
+  restaurantCost     Decimal @db.Decimal(12,2)  // 餐厅成本
+  otherVariableCost  Decimal @db.Decimal(12,2)  // 其他变动成本
+
+  // 计算得出
+  totalVariableCost Decimal @db.Decimal(12,2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dailyOperation DailyOperation @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+
+  @@map("variable_costs")
+}
+
+// ============================================================
+// 人工成本 (Labor Cost)
+// ============================================================
+
+model LaborCost {
+  id              String  @id @default(cuid())
+  dailyOperationId String @unique
+
+  // 各部门日分摊工资
+  frontDeskWages     Decimal @db.Decimal(12,2)
+  housekeepingWages Decimal @db.Decimal(12,2)
+  restaurantWages   Decimal @db.Decimal(12,2)
+  managementWages   Decimal @db.Decimal(12,2)
+  // 计算得出
+  totalLaborCost Decimal @db.Decimal(12,2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dailyOperation DailyOperation @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+
+  @@map("labor_costs")
+}
+
+// ============================================================
+// 提成成本 (Commission Cost)
+// ============================================================
+
+model CommissionCost {
+  id              String  @id @default(cuid())
+  dailyOperationId String @unique
+
+  // 各提成项
+  reviewCommission        Decimal @db.Decimal(12,2)  // 前台好评提成
+  qrCommission            Decimal @db.Decimal(12,2)  // 前台二维码提成
+  memberCardCommission    Decimal @db.Decimal(12,2)  // 会员卡提成
+  housekeepingCommission   Decimal @db.Decimal(12,2)  // 客房提成
+
+  // 计算得出
+  totalCommissionCost Decimal @db.Decimal(12,2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dailyOperation DailyOperation @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+
+  @@map("commission_costs")
+}
+
+// ============================================================
+// 固定成本 (Fixed Cost)
+// ============================================================
+
+model FixedCost {
+  id              String  @id @default(cuid())
+  dailyOperationId String @unique
+
+  rent                 Decimal @db.Decimal(12,2)  // 租金
+  platformPromotionFee  Decimal @db.Decimal(12,2)  // 平台推广费
+  otherFixedCost       Decimal @db.Decimal(12,2)  // 其他固定成本
+
+  // 计算得出
+  totalFixedCost Decimal @db.Decimal(12,2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dailyOperation DailyOperation @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+
+  @@map("fixed_costs")
+}
+
+// ============================================================
+// 能耗 (Energy)
+// ============================================================
+
+model Energy {
+  id              String  @id @default(cuid())
+  dailyOperationId String @unique
+
+  // 电费
+  electricityConsumption Decimal @db.Decimal(10,4)  // 消耗量
+  electricityUnitPrice   Decimal @db.Decimal(10,4)  // 单价（店长维护）
+  electricityCost       Decimal @db.Decimal(12,2)  // 计算结果
+
+  // 水费
+  waterConsumption Decimal @db.Decimal(10,4)
+  waterUnitPrice   Decimal @db.Decimal(10,4)
+  waterCost        Decimal @db.Decimal(12,2)
+
+  // 天然气
+  gasConsumption Decimal @db.Decimal(10,4)
+  gasUnitPrice   Decimal @db.Decimal(10,4)
+  gasCost        Decimal @db.Decimal(12,2)
+  // 计算得出
+  totalUtilityCost Decimal @db.Decimal(12,2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dailyOperation DailyOperation @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+
+  @@map("energies")
+}
+
+// ============================================================
+// 计算结果 (Calculation Result)
+// ============================================================
+
+model CalculationResult {
+  id              String  @id @default(cuid())
+  dailyOperationId String @unique
+
+  // 收入
+  totalRevenue Decimal @db.Decimal(12,2)
+  // 成本分解
+  totalVariableCost    Decimal @db.Decimal(12,2)
+  totalLaborCost        Decimal @db.Decimal(12,2)
+  totalCommissionCost   Decimal @db.Decimal(12,2)
+  totalFixedCost        Decimal @db.Decimal(12,2)
+  totalCost             Decimal @db.Decimal(12,2)
+
+  // GOP (核心指标)
+  gop     Decimal @db.Decimal(12,2)
+  gopRate Decimal @db.Decimal(8,6)
+  // 运营指标
+  occupancyRate Decimal @db.Decimal(8,6)  // 出租率
+  avgRoomRate   Decimal @db.Decimal(12,2)  // 平均房价
+  revpar        Decimal @db.Decimal(12,2)  // 每可供房收入
+
+  // 异常标记
+  isRevenueAnomaly Boolean @default(false)
+  isCostAnomaly    Boolean @default(false)
+
+  // 计算元数据
+  calculationVersion String   // 计算公式版本
+  calculatedAt      DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dailyOperation DailyOperation @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+
+  // 反向关系
+  anomalies Anomaly[]
+
+  @@map("calculation_results")
+}
+
+// ============================================================
+// 异常记录 (Anomaly)
+// ============================================================
+
+model Anomaly {
+  id                  String  @id @default(cuid())
+  dailyOperationId    String
+  calculationResultId String
+
+  type      AnomalyType
+  severity  AnomalySeverity
+
+  expectedValue   Decimal @db.Decimal(12,2)
+  actualValue    Decimal @db.Decimal(12,2)
+  deviation      Decimal @db.Decimal(12,2)
+  deviationRate  Decimal @db.Decimal(8,6)
+  description String
+
+  status    AnomalyStatus @default(PENDING)
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dailyOperation    DailyOperation    @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+  calculationResult CalculationResult @relation(fields: [calculationResultId], references: [id], onDelete: Cascade)
+
+  @@index([dailyOperationId])
+  @@index([calculationResultId])
+  @@index([status])
+  @@map("anomalies")
+}
+
+enum AnomalyType {
+  REVENUE
+  COST
+}
+
+enum AnomalySeverity {
+  WARNING
+  ERROR
+}
+
+enum AnomalyStatus {
+  PENDING
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+// ============================================================
+// 审计日志 (Audit Log)
+// ============================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String   // 'DailyOperation' | 'Revenue' | ...
+  entityId   String
+
+  action AuditAction
+
+  oldValue Json?
+  newValue Json?
+
+  operatorId String
+  ipAddress String?
+  timestamp DateTime @default(now())
+
+  operator User @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+
+  @@index([entityType, entityId])
+  @@index([operatorId])
+  @@index([timestamp])
+  @@index([entityType, entityId, timestamp]) // 组合索引支持时间范围查询
+  @@map("audit_logs")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  SUBMIT
+  APPROVE
+  REJECT
+}
+
+// ============================================================
+// 库存 (Inventory)
+// ============================================================
+
+model InventoryItem {
+  id       String  @id @default(cuid())
+  hotelId  String
+  code     String
+  name     String
+  category InventoryCategory
+  unit     String
+  unitPrice Decimal @db.Decimal(10,4)
+  status   ItemStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hotel        Hotel      @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+  transactions InventoryTransaction[]
+
+  @@unique([hotelId, code])
+  @@index([hotelId])
+  @@index([category])
+  @@map("inventory_items")
+}
+
+enum InventoryCategory {
+  ROOM_SUPPLIES
+  FRONT_DESK_ITEMS
+  MERCHANDISE
+  RESTAURANT
+}
+
+enum ItemStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model InventoryTransaction {
+  id              String  @id @default(cuid())
+  hotelId         String
+  inventoryItemId String
+  dailyOperationId String?
+
+  date      DateTime
+  type      TransactionType
+
+  quantity   Decimal @db.Decimal(12,4)
+  unitPrice Decimal @db.Decimal(10,4)
+  amount    Decimal @db.Decimal(12,2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hotel         Hotel          @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  dailyOperation DailyOperation? @relation(fields: [dailyOperationId], references: [id], onDelete: SetNull)
+
+  @@index([hotelId])
+  @@index([inventoryItemId])
+  @@index([dailyOperationId])
+  @@index([date])
+  @@map("inventory_transactions")
+}
+
+enum TransactionType {
+  IN
+  OUT
+}
+
+// ============================================================
+// 目标管理 (Target Management)
+// ============================================================
+
+model MonthlyTarget {
+  id          String  @id @default(cuid())
+  hotelId     String
+  yearMonth   String  // YYYY-MM
+  revenueTarget Decimal @db.Decimal(12,2)
+  costTarget    Decimal @db.Decimal(12,2)
+  gopTarget     Decimal @db.Decimal(12,2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hotel Hotel @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+
+  @@unique([hotelId, yearMonth])
+  @@index([hotelId])
+  @@map("monthly_targets")
+}
+
+model WeeklyTarget {
+  id          String  @id @default(cuid())
+  hotelId     String
+  yearMonth   String
+  weekNumber  Int
+  revenueTarget Decimal @db.Decimal(12,2)
+  costTarget    Decimal @db.Decimal(12,2)
+  gopTarget     Decimal @db.Decimal(12,2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hotel Hotel @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+
+  @@unique([hotelId, yearMonth, weekNumber])
+  @@index([hotelId])
+  @@map("weekly_targets")
+}
+
+model DailyTarget {
+  id          String  @id @default(cuid())
+  hotelId     String
+  businessDate DateTime
+  revenueTarget Decimal @db.Decimal(12,2)
+  costTarget    Decimal @db.Decimal(12,2)
+  gopTarget     Decimal @db.Decimal(12,2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hotel Hotel @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+
+  @@unique([hotelId, businessDate])
+  @@index([hotelId])
+  @@index([businessDate])
+  @@map("daily_targets")
+}
+
+// ============================================================
+// 总部管理费 (Management Fee - 独立于 GOP)
+// ============================================================
+
+model ManagementFee {
+  id                   String  @id @default(cuid())
+  hotelId              String
+  yearMonth            String  // YYYY-MM
+
+  monthlyTarget        Decimal @db.Decimal(12,2)  // 月度业绩目标
+  managementFeeRate   Decimal @db.Decimal(8,6)  // 管理费费率
+  monthlyManagementFee Decimal @db.Decimal(12,2)// 计算: monthlyTarget × rate
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hotel Hotel @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+
+  @@unique([hotelId, yearMonth])
+  @@index([hotelId])
+  @@map("management_fees")
+}
+
+// ============================================================
+// 配置表 (Configuration)
+// ============================================================
+
+// 成本分类映射
+model CostCategoryMapping {
+  id        String  @id @default(cuid())
+  hotelId   String? // 可为空表示默认映射
+
+  sourceSheet String  // '客房耗材出入库录入'
+  sourceField String  // '出库金额'
+
+  costCategory    CostCategory
+  costSubCategory String
+
+  allocationMethod AllocationMethod
+
+  status    ConfigStatus @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hotelId])
+  @@index([sourceSheet])
+  @@unique([hotelId, sourceSheet, sourceField])
+  @@map("cost_category_mappings")
+}
+
+enum CostCategory {
+  VARIABLE
+  LABOR
+  COMMISSION
+  FIXED
+}
+
+enum AllocationMethod {
+  ROOM_COUNT  // 按房间数分摊
+  DAILY_USAGE // 按日消耗分摊
+  MANUAL      // 手动分摊
+}
+
+enum ConfigStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// 分摊配置
+model AllocationConfig {
+  id        String  @id @default(cuid())
+  hotelId   String
+
+  costCategory    CostCategory
+  costSubCategory String
+
+  allocationMethod AllocationMethod
+
+  // ROOM_COUNT 专用
+  roomCountType RoomCountType? // NEED_CONFIRMATION
+
+  // MANUAL 专用
+  manualValue Decimal?
+  manualRatio Decimal?
+  status    ConfigStatus @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hotel Hotel @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+
+  @@unique([hotelId, costCategory, costSubCategory])
+  @@index([hotelId])
+  @@index([costCategory])
+  @@map("allocation_configs")
+}
+
+enum RoomCountType {
+  TOTAL      // 总房间数 (133)
+  AVAILABLE  // 可售房数
+  OCCUPIED   // 入住间数
+}
+
+// ============================================================
+// 历史参考数据 (Historical Reference Data)
+// ============================================================
+
+// 历史参考月度数据
+model HistoricalMonthlyData {
+  id            String   @id @default(cuid())
+  hotelId       String
+  yearMonth     String   // YYYY-MM 来源数据月份
+
+  // 来源文件信息
+  sourceFile    String?  // 来源Excel文件名
+  sourceSheet   String?  // 来源Sheet名称
+
+  // 收入汇总
+  totalRoomRevenue    Decimal @db.Decimal(12,2)
+  totalMinibarRevenue Decimal @db.Decimal(12,2)
+  totalFoodRevenue    Decimal @db.Decimal(12,2)
+  totalOtherRevenue   Decimal @db.Decimal(12,2)
+  totalRevenue       Decimal @db.Decimal(12,2)
+
+  // 成本汇总
+  totalVariableCost   Decimal @db.Decimal(12,2)
+  totalFixedCost     Decimal @db.Decimal(12,2)
+  totalUtilityCost   Decimal @db.Decimal(12,2)
+  totalLaborCost     Decimal @db.Decimal(12,2)
+  totalCommissionCost Decimal @db.Decimal(12,2)
+  totalOtherCost     Decimal @db.Decimal(12,2)
+  totalCost         Decimal @db.Decimal(12,2)
+
+  // GOP
+  totalGop      Decimal @db.Decimal(12,2)
+  avgGopRate    Decimal @db.Decimal(8,6)
+
+  // 运营指标均值
+  avgOccupancyRate Decimal @db.Decimal(8,6)
+  avgAdr           Decimal @db.Decimal(12,2)
+  avgRevpar        Decimal @db.Decimal(12,2)
+  avgSoldRooms     Decimal @db.Decimal(10,2)
+  totalSoldRooms   Decimal @db.Decimal(12,2)
+
+  // 成本结构分析
+  variableCostRatio Decimal @db.Decimal(8,6)
+  fixedCostRatio   Decimal @db.Decimal(8,6)
+  laborCostRatio   Decimal @db.Decimal(8,6)
+  utilityCostRatio Decimal @db.Decimal(8,6)
+  costPerSoldRoom  Decimal @db.Decimal(12,2)
+
+  // 数据统计
+  daysCount        Int      // 有效天数
+  weekendDaysCount Int      // 周末天数
+  weekdayDaysCount Int      // 工作日天数
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hotel         Hotel                  @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+  dailyRecords HistoricalDailyData[]
+
+  @@unique([hotelId, yearMonth])
+  @@index([hotelId])
+  @@index([yearMonth])
+  @@map("historical_monthly_data")
+}
+
+// 历史参考每日数据
+model HistoricalDailyData {
+  id                  String   @id @default(cuid())
+  historicalMonthlyId String
+
+  // 日期
+  businessDate        DateTime
+
+  // 收入
+  roomRevenue    Decimal @db.Decimal(12,2)
+  minibarRevenue Decimal @db.Decimal(12,2)
+  foodRevenue    Decimal @db.Decimal(12,2)
+  otherRevenue   Decimal @db.Decimal(12,2)
+  totalRevenue   Decimal @db.Decimal(12,2)
+
+  // 变动成本
+  roomSuppliesCost    Decimal @db.Decimal(12,2)
+  frontDeskItemsCost   Decimal @db.Decimal(12,2)
+  merchandiseCost     Decimal @db.Decimal(12,2)
+  restaurantCost      Decimal @db.Decimal(12,2)
+  laundryCost         Decimal @db.Decimal(12,2)
+  totalVariableCost   Decimal @db.Decimal(12,2)
+
+  // 固定成本
+  rent            Decimal @db.Decimal(12,2)
+  propertyFee     Decimal @db.Decimal(12,2)
+  insurance       Decimal @db.Decimal(12,2)
+  networkFee      Decimal @db.Decimal(12,2)
+  brandServiceFee Decimal @db.Decimal(12,2)
+  totalFixedCost  Decimal @db.Decimal(12,2)
+
+  // 能耗
+  electricityCost   Decimal @db.Decimal(12,2)
+  waterCost       Decimal @db.Decimal(12,2)
+  gasCost         Decimal @db.Decimal(12,2)
+  totalUtilityCost Decimal @db.Decimal(12,2)
+
+  // 其他成本
+  otherCost Decimal @db.Decimal(12,2)
+
+  // 总成本 & GOP
+  totalCost Decimal @db.Decimal(12,2)
+  gop       Decimal @db.Decimal(12,2)
+  gopRate   Decimal @db.Decimal(8,6)
+
+  // 运营指标
+  soldRooms      Decimal @db.Decimal(10,0)
+  occupancyRate  Decimal @db.Decimal(8,6)
+  adr            Decimal @db.Decimal(12,2)
+  revpar         Decimal @db.Decimal(12,2)
+
+  // 星期几 (0=周日, 1=周一, ..., 6=周六)
+  dayOfWeek Int
+  isWeekend Boolean @default(false)
+
+  // 用于 Forecast 的权重
+  revenueWeight Decimal @db.Decimal(8,6) // 归一化后的权重
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  monthlyData HistoricalMonthlyData @relation(fields: [historicalMonthlyId], references: [id], onDelete: Cascade)
+
+  @@unique([historicalMonthlyId, businessDate])
+  @@index([historicalMonthlyId])
+  @@index([businessDate])
+  @@map("historical_daily_data")
+}
+
+// ============================================================
+// 业绩预定 (Forecast) - 简化版 V2
+// ============================================================
+
+// 月度业绩预定状态
+enum ForecastMonthStatus {
+  DRAFT     // 草稿
+  SUBMITTED // 已提交待审核
+  APPROVED  // 审核通过
+  REJECTED  // 已退回
+}
+
+// 月度业绩预定
+model ForecastMonth {
+  id                    String   @id @default(cuid())
+  hotelId               String
+  year                  Int      // 2026
+  month                 Int      // 1-12
+  monthlyRevenueForecast Decimal @db.Decimal(12,2)  // 月度业绩预定总额
+  status                ForecastMonthStatus @default(DRAFT)
+
+  // 提交信息
+  submittedAt           DateTime?
+  submittedBy           String?
+  reviewedAt            DateTime?
+  reviewedBy           String?
+  rejectionReason       String?
+
+  // 审计字段
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  hotel                 Hotel        @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+  dailyForecasts        ForecastDay[]
+
+  @@unique([hotelId, year, month])
+  @@index([hotelId])
+  @@index([hotelId, year, month])
+  @@index([status])
+  @@map("forecast_months")
+}
+
+// 每日业绩预定
+model ForecastDay {
+  id                    String   @id @default(cuid())
+  forecastMonthId       String
+
+  // 日期信息
+  businessDate          DateTime
+  dayOfWeek             Int      // 0=周日, 1=周一, ..., 6=周六
+  isWeekend             Boolean  @default(false)
+  isHoliday             Boolean  @default(false)
+
+  // 金额
+  systemSuggestedAmount Decimal  @db.Decimal(12,2)  // 系统建议金额
+  manualAmount          Decimal? @db.Decimal(12,2)  // 人工调整金额
+  finalAmount          Decimal  @db.Decimal(12,2)  // 最终确认金额
+
+  // 状态
+  isManuallyAdjusted   Boolean  @default(false)  // 是否被人为调整
+  isLocked             Boolean  @default(false)  // 是否被锁定（重新平衡时使用）
+
+  // 审计字段
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  forecastMonth         ForecastMonth @relation(fields: [forecastMonthId], references: [id], onDelete: Cascade)
+
+  @@unique([forecastMonthId, businessDate])
+  @@index([forecastMonthId])
+  @@index([businessDate])
+  @@map("forecast_days")
+}
+
+// ============================================================
+// 业绩预定 (Forecast) - 旧版 V1（保留兼容）
+// ============================================================
+
+// 业绩预定计划 - 版本控制
+model ForecastPlan {
+  id            String   @id @default(cuid())
+  hotelId       String
+  year          Int      // 2026
+  name          String   // "2026年9月业绩预定"
+  status        ForecastPlanStatus @default(DRAFT)
+
+  // 有效月份范围 (便于查询)
+  startMonth    String   // YYYY-MM
+  endMonth      String   // YYYY-MM
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  hotel         Hotel @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+  monthlyForecasts MonthlyForecast[]
+
+  @@unique([hotelId, year, status]) // 同年只能有一个 ACTIVE
+  @@index([hotelId, year])
+  @@map("forecast_plans")
+}
+
+enum ForecastPlanStatus {
+  DRAFT     // 草稿，可编辑
+  SUBMITTED // 已提交待审核
+  APPROVED  // 审核通过，生效
+  ARCHIVED  // 已归档
+}
+
+// 月度业绩预定
+model MonthlyForecast {
+  id            String   @id @default(cuid())
+  planId        String
+  yearMonth     String   // YYYY-MM 格式
+  expectedRevenue Decimal @db.Decimal(12,2)  // 月度业绩预定
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  plan          ForecastPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  dailyForecasts DailyForecast[]
+
+  @@unique([planId, yearMonth])
+  @@index([planId])
+  @@map("monthly_forecasts")
+}
+
+// 每日业绩预定
+model DailyForecast {
+  id                  String   @id @default(cuid())
+  monthlyForecastId   String
+  businessDate        DateTime
+  expectedRevenue     Decimal @db.Decimal(12,2)  // 每日业绩预定
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  monthlyForecast     MonthlyForecast @relation(fields: [monthlyForecastId], references: [id], onDelete: Cascade)
+
+  // 关联到日常核算记录 (可选，用于已审核的记录)
+  dailyOperationId    String?         // 存储关联的 DailyOperation ID
+
+  @@unique([monthlyForecastId, businessDate])
+  @@index([monthlyForecastId])
+  @@index([businessDate])
+  @@map("daily_forecasts")
+}
