@@ -102,7 +102,7 @@ export function validateExcelImport(
   const dailySum = rows.reduce((sum, row) => sum + (row.revenue || 0), 0);
 
   // 如果提供了月度预告，校验合计是否一致
-  let monthlyForecast = providedMonthlyForecast || 0;
+  const monthlyForecast = providedMonthlyForecast || 0;
   if (providedMonthlyForecast !== undefined) {
     const difference = providedMonthlyForecast - dailySum;
     if (Math.abs(difference) > 0.01) {

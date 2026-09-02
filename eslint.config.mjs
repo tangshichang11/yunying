@@ -19,6 +19,7 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-unused-vars": "off",
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/immutability": "off",
+      "prefer-const": "off",
     },
   },
 ]);
