@@ -251,6 +251,7 @@ function calculateMonthlySummary(records: DailyRecord[], yearMonth: string): Mon
   let totalVariableCost = 0;
   let totalFixedCost = 0;
   let totalUtilityCost = 0;
+  let totalLaborCost = 0;
   let totalCost = 0;
   let totalGop = 0;
   let totalSoldRooms = 0;
@@ -266,6 +267,7 @@ function calculateMonthlySummary(records: DailyRecord[], yearMonth: string): Mon
     totalVariableCost += record.totalVariableCost;
     totalFixedCost += record.totalFixedCost;
     totalUtilityCost += record.totalUtilityCost;
+    totalLaborCost += record.laborCost;
     totalCost += record.totalCost;
     totalGop += record.gop;
     totalSoldRooms += record.soldRooms;
@@ -289,7 +291,7 @@ function calculateMonthlySummary(records: DailyRecord[], yearMonth: string): Mon
   const costToRevenueRatio = totalRevenue > 0 ? totalCost / totalRevenue : 0;
   const variableCostRatio = totalRevenue > 0 ? totalVariableCost / totalRevenue : 0;
   const fixedCostRatio = totalRevenue > 0 ? totalFixedCost / totalRevenue : 0;
-  const laborCostRatio = totalRevenue > 0 ? (totalLaborCost || 0) / totalRevenue : 0;
+  const laborCostRatio = totalRevenue > 0 ? totalLaborCost / totalRevenue : 0;
   const utilityCostRatio = totalRevenue > 0 ? totalUtilityCost / totalRevenue : 0;
 
   return {
