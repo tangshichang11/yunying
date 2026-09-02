@@ -57,7 +57,7 @@ export async function parseHistoricalExcel(
   // 动态导入 xlsx
   const XLSX = await import('xlsx');
 
-  const workbook = XLSX.readFile(filePath, { dataOnly: true });
+  const workbook = XLSX.readFile(filePath, { dataOnly: true } as any);
   const worksheet = workbook.Sheets[sheetName];
 
   if (!worksheet) {
@@ -234,6 +234,11 @@ function calculateMonthlySummary(records: DailyRecord[], yearMonth: string): Mon
       daysCount: 0,
       weekendDaysCount: 0,
       weekdayDaysCount: 0,
+      costToRevenueRatio: 0,
+      variableCostRatio: 0,
+      fixedCostRatio: 0,
+      laborCostRatio: 0,
+      utilityCostRatio: 0,
     };
   }
 
@@ -281,6 +286,12 @@ function calculateMonthlySummary(records: DailyRecord[], yearMonth: string): Mon
   const avgRevpar = avgOccupancyRate * avgAdr;
   const avgSoldRooms = totalSoldRooms / daysCount;
 
+  const costToRevenueRatio = totalRevenue > 0 ? totalCost / totalRevenue : 0;
+  const variableCostRatio = totalRevenue > 0 ? totalVariableCost / totalRevenue : 0;
+  const fixedCostRatio = totalRevenue > 0 ? totalFixedCost / totalRevenue : 0;
+  const laborCostRatio = totalRevenue > 0 ? (totalLaborCost || 0) / totalRevenue : 0;
+  const utilityCostRatio = totalRevenue > 0 ? totalUtilityCost / totalRevenue : 0;
+
   return {
     yearMonth,
     totalRoomRevenue,
@@ -306,6 +317,11 @@ function calculateMonthlySummary(records: DailyRecord[], yearMonth: string): Mon
     daysCount,
     weekendDaysCount,
     weekdayDaysCount,
+    costToRevenueRatio,
+    variableCostRatio,
+    fixedCostRatio,
+    laborCostRatio,
+    utilityCostRatio,
   };
 }
 
