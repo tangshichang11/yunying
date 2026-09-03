@@ -97,7 +97,12 @@ export async function GET(request: NextRequest, { params }: Params) {
       submissionDeadline: deadline.toISOString(),
       isPastDeadline,
       lastSavedAt: lastSavedAt ? lastSavedAt.toISOString() : null,
-      revenue: dailyOperation?.revenue || null,
+      revenue: dailyOperation?.revenue ? {
+        roomRevenue: dailyOperation.revenue.roomRevenue,
+        minibarRevenue: dailyOperation.revenue.minibarRevenue,
+        foodRevenue: dailyOperation.revenue.foodRevenue,
+        otherRevenue: dailyOperation.revenue.otherRevenue,
+      } : null,
       variableCost: dailyOperation?.variableCost || null,
       laborCost: dailyOperation?.laborCost || null,
       commissionCost: dailyOperation?.commissionCost || null,
