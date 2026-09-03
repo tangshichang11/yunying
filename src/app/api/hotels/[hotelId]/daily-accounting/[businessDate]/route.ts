@@ -8,6 +8,17 @@ interface Params {
   }>;
 }
 
+// 辅助函数：确保值为数字
+function toNumber(val: unknown): number {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === 'number') return val;
+  if (typeof val === 'string') return parseFloat(val) || 0;
+  if (typeof val === 'object' && val !== null && 'toNumber' in val) {
+    return (val as { toNumber: () => number }).toNumber();
+  }
+  return Number(val) || 0;
+}
+
 /**
  * GET /api/hotels/:hotelId/daily-accounting/:businessDate
  * 获取指定酒店指定日期的日经营数据
@@ -211,98 +222,90 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     // 更新收入
     if (revenue) {
+      const roomRevenue = toNumber(revenue.roomRevenue);
+      const minibarRevenue = toNumber(revenue.minibarRevenue);
+      const foodRevenue = toNumber(revenue.foodRevenue);
+      const otherRevenue = toNumber(revenue.otherRevenue);
+      const totalRevenue = roomRevenue + minibarRevenue + foodRevenue + otherRevenue;
+
       await prisma.revenue.upsert({
         where: { dailyOperationId: dailyOperation.id },
         update: {
-          roomRevenue: revenue.roomRevenue ?? 0,
-          minibarRevenue: revenue.minibarRevenue ?? 0,
-          foodRevenue: revenue.foodRevenue ?? 0,
-          otherRevenue: revenue.otherRevenue ?? 0,
-          totalRevenue:
-            (revenue.roomRevenue ?? 0) +
-            (revenue.minibarRevenue ?? 0) +
-            (revenue.foodRevenue ?? 0) +
-            (revenue.otherRevenue ?? 0),
+          roomRevenue,
+          minibarRevenue,
+          foodRevenue,
+          otherRevenue,
+          totalRevenue,
         },
         create: {
           dailyOperationId: dailyOperation.id,
-          roomRevenue: revenue.roomRevenue ?? 0,
-          minibarRevenue: revenue.minibarRevenue ?? 0,
-          foodRevenue: revenue.foodRevenue ?? 0,
-          otherRevenue: revenue.otherRevenue ?? 0,
-          totalRevenue:
-            (revenue.roomRevenue ?? 0) +
-            (revenue.minibarRevenue ?? 0) +
-            (revenue.foodRevenue ?? 0) +
-            (revenue.otherRevenue ?? 0),
+          roomRevenue,
+          minibarRevenue,
+          foodRevenue,
+          otherRevenue,
+          totalRevenue,
         },
       });
     }
 
     // 更新变动成本
     if (variableCost) {
+      const roomSuppliesCost = toNumber(variableCost.roomSuppliesCost);
+      const frontDeskItemsCost = toNumber(variableCost.frontDeskItemsCost);
+      const merchandiseCost = toNumber(variableCost.merchandiseCost);
+      const laundryCost = toNumber(variableCost.laundryCost);
+      const restaurantCost = toNumber(variableCost.restaurantCost);
+      const otherVariableCost = toNumber(variableCost.otherVariableCost);
+      const totalVariableCost = roomSuppliesCost + frontDeskItemsCost + merchandiseCost + laundryCost + restaurantCost + otherVariableCost;
+
       await prisma.variableCost.upsert({
         where: { dailyOperationId: dailyOperation.id },
         update: {
-          roomSuppliesCost: variableCost.roomSuppliesCost ?? 0,
-          frontDeskItemsCost: variableCost.frontDeskItemsCost ?? 0,
-          merchandiseCost: variableCost.merchandiseCost ?? 0,
-          laundryCost: variableCost.laundryCost ?? 0,
-          restaurantCost: variableCost.restaurantCost ?? 0,
-          otherVariableCost: variableCost.otherVariableCost ?? 0,
-          totalVariableCost:
-            (variableCost.roomSuppliesCost ?? 0) +
-            (variableCost.frontDeskItemsCost ?? 0) +
-            (variableCost.merchandiseCost ?? 0) +
-            (variableCost.laundryCost ?? 0) +
-            (variableCost.restaurantCost ?? 0) +
-            (variableCost.otherVariableCost ?? 0),
+          roomSuppliesCost,
+          frontDeskItemsCost,
+          merchandiseCost,
+          laundryCost,
+          restaurantCost,
+          otherVariableCost,
+          totalVariableCost,
         },
         create: {
           dailyOperationId: dailyOperation.id,
-          roomSuppliesCost: variableCost.roomSuppliesCost ?? 0,
-          frontDeskItemsCost: variableCost.frontDeskItemsCost ?? 0,
-          merchandiseCost: variableCost.merchandiseCost ?? 0,
-          laundryCost: variableCost.laundryCost ?? 0,
-          restaurantCost: variableCost.restaurantCost ?? 0,
-          otherVariableCost: variableCost.otherVariableCost ?? 0,
-          totalVariableCost:
-            (variableCost.roomSuppliesCost ?? 0) +
-            (variableCost.frontDeskItemsCost ?? 0) +
-            (variableCost.merchandiseCost ?? 0) +
-            (variableCost.laundryCost ?? 0) +
-            (variableCost.restaurantCost ?? 0) +
-            (variableCost.otherVariableCost ?? 0),
+          roomSuppliesCost,
+          frontDeskItemsCost,
+          merchandiseCost,
+          laundryCost,
+          restaurantCost,
+          otherVariableCost,
+          totalVariableCost,
         },
       });
     }
 
     // 更新人工成本
     if (laborCost) {
+      const frontDeskWages = toNumber(laborCost.frontDeskWages);
+      const housekeepingWages = toNumber(laborCost.housekeepingWages);
+      const restaurantWages = toNumber(laborCost.restaurantWages);
+      const managementWages = toNumber(laborCost.managementWages);
+      const totalLaborCost = frontDeskWages + housekeepingWages + restaurantWages + managementWages;
+
       await prisma.laborCost.upsert({
         where: { dailyOperationId: dailyOperation.id },
         update: {
-          frontDeskWages: laborCost.frontDeskWages ?? 0,
-          housekeepingWages: laborCost.housekeepingWages ?? 0,
-          restaurantWages: laborCost.restaurantWages ?? 0,
-          managementWages: laborCost.managementWages ?? 0,
-          totalLaborCost:
-            (laborCost.frontDeskWages ?? 0) +
-            (laborCost.housekeepingWages ?? 0) +
-            (laborCost.restaurantWages ?? 0) +
-            (laborCost.managementWages ?? 0),
+          frontDeskWages,
+          housekeepingWages,
+          restaurantWages,
+          managementWages,
+          totalLaborCost,
         },
         create: {
           dailyOperationId: dailyOperation.id,
-          frontDeskWages: laborCost.frontDeskWages ?? 0,
-          housekeepingWages: laborCost.housekeepingWages ?? 0,
-          restaurantWages: laborCost.restaurantWages ?? 0,
-          managementWages: laborCost.managementWages ?? 0,
-          totalLaborCost:
-            (laborCost.frontDeskWages ?? 0) +
-            (laborCost.housekeepingWages ?? 0) +
-            (laborCost.restaurantWages ?? 0) +
-            (laborCost.managementWages ?? 0),
+          frontDeskWages,
+          housekeepingWages,
+          restaurantWages,
+          managementWages,
+          totalLaborCost,
         },
       });
     }
@@ -312,96 +315,96 @@ export async function PUT(request: NextRequest, { params }: Params) {
       await prisma.commissionCost.upsert({
         where: { dailyOperationId: dailyOperation.id },
         update: {
-          reviewCommission: commissionCost.reviewCommission ?? 0,
-          qrCommission: commissionCost.qrCommission ?? 0,
-          memberCardCommission: commissionCost.memberCardCommission ?? 0,
-          housekeepingCommission: commissionCost.housekeepingCommission ?? 0,
+          reviewCommission: toNumber(commissionCost.reviewCommission),
+          qrCommission: toNumber(commissionCost.qrCommission),
+          memberCardCommission: toNumber(commissionCost.memberCardCommission),
+          housekeepingCommission: toNumber(commissionCost.housekeepingCommission),
           totalCommissionCost:
-            (commissionCost.reviewCommission ?? 0) +
-            (commissionCost.qrCommission ?? 0) +
-            (commissionCost.memberCardCommission ?? 0) +
-            (commissionCost.housekeepingCommission ?? 0),
+            toNumber(commissionCost.reviewCommission) +
+            toNumber(commissionCost.qrCommission) +
+            toNumber(commissionCost.memberCardCommission) +
+            toNumber(commissionCost.housekeepingCommission),
         },
         create: {
           dailyOperationId: dailyOperation.id,
-          reviewCommission: commissionCost.reviewCommission ?? 0,
-          qrCommission: commissionCost.qrCommission ?? 0,
-          memberCardCommission: commissionCost.memberCardCommission ?? 0,
-          housekeepingCommission: commissionCost.housekeepingCommission ?? 0,
+          reviewCommission: toNumber(commissionCost.reviewCommission),
+          qrCommission: toNumber(commissionCost.qrCommission),
+          memberCardCommission: toNumber(commissionCost.memberCardCommission),
+          housekeepingCommission: toNumber(commissionCost.housekeepingCommission),
           totalCommissionCost:
-            (commissionCost.reviewCommission ?? 0) +
-            (commissionCost.qrCommission ?? 0) +
-            (commissionCost.memberCardCommission ?? 0) +
-            (commissionCost.housekeepingCommission ?? 0),
+            toNumber(commissionCost.reviewCommission) +
+            toNumber(commissionCost.qrCommission) +
+            toNumber(commissionCost.memberCardCommission) +
+            toNumber(commissionCost.housekeepingCommission),
         },
       });
     }
 
     // 更新固定成本
     if (fixedCost) {
+      const rent = toNumber(fixedCost.rent);
+      const platformPromotionFee = toNumber(fixedCost.platformPromotionFee);
+      const otherFixedCost = toNumber(fixedCost.otherFixedCost);
+      const totalFixedCost = rent + platformPromotionFee + otherFixedCost;
+
       await prisma.fixedCost.upsert({
         where: { dailyOperationId: dailyOperation.id },
         update: {
-          rent: fixedCost.rent ?? 0,
-          platformPromotionFee: fixedCost.platformPromotionFee ?? 0,
-          otherFixedCost: fixedCost.otherFixedCost ?? 0,
-          totalFixedCost:
-            (fixedCost.rent ?? 0) +
-            (fixedCost.platformPromotionFee ?? 0) +
-            (fixedCost.otherFixedCost ?? 0),
+          rent,
+          platformPromotionFee,
+          otherFixedCost,
+          totalFixedCost,
         },
         create: {
           dailyOperationId: dailyOperation.id,
-          rent: fixedCost.rent ?? 0,
-          platformPromotionFee: fixedCost.platformPromotionFee ?? 0,
-          otherFixedCost: fixedCost.otherFixedCost ?? 0,
-          totalFixedCost:
-            (fixedCost.rent ?? 0) +
-            (fixedCost.platformPromotionFee ?? 0) +
-            (fixedCost.otherFixedCost ?? 0),
+          rent,
+          platformPromotionFee,
+          otherFixedCost,
+          totalFixedCost,
         },
       });
     }
 
     // 更新能耗
     if (energy) {
-      const electricityCost =
-        (energy.electricityConsumption ?? 0) * (energy.electricityUnitPrice ?? 0);
-      const waterCost = (energy.waterConsumption ?? 0) * (energy.waterUnitPrice ?? 0);
-      const gasCost = (energy.gasConsumption ?? 0) * (energy.gasUnitPrice ?? 0);
+      const electricityConsumption = toNumber(energy.electricityConsumption);
+      const electricityUnitPrice = toNumber(energy.electricityUnitPrice);
+      const waterConsumption = toNumber(energy.waterConsumption);
+      const waterUnitPrice = toNumber(energy.waterUnitPrice);
+      const gasConsumption = toNumber(energy.gasConsumption);
+      const gasUnitPrice = toNumber(energy.gasUnitPrice);
+
+      const electricityCost = Math.round(electricityConsumption * electricityUnitPrice * 100) / 100;
+      const waterCost = Math.round(waterConsumption * waterUnitPrice * 100) / 100;
+      const gasCost = Math.round(gasConsumption * gasUnitPrice * 100) / 100;
+      const totalUtilityCost = electricityCost + waterCost + gasCost;
 
       await prisma.energy.upsert({
         where: { dailyOperationId: dailyOperation.id },
         update: {
-          electricityConsumption: energy.electricityConsumption ?? 0,
-          electricityUnitPrice: energy.electricityUnitPrice ?? 0,
-          electricityCost: Math.round(electricityCost * 100) / 100,
-          waterConsumption: energy.waterConsumption ?? 0,
-          waterUnitPrice: energy.waterUnitPrice ?? 0,
-          waterCost: Math.round(waterCost * 100) / 100,
-          gasConsumption: energy.gasConsumption ?? 0,
-          gasUnitPrice: energy.gasUnitPrice ?? 0,
-          gasCost: Math.round(gasCost * 100) / 100,
-          totalUtilityCost:
-            Math.round(electricityCost * 100) / 100 +
-            Math.round(waterCost * 100) / 100 +
-            Math.round(gasCost * 100) / 100,
+          electricityConsumption,
+          electricityUnitPrice,
+          electricityCost,
+          waterConsumption,
+          waterUnitPrice,
+          waterCost,
+          gasConsumption,
+          gasUnitPrice,
+          gasCost,
+          totalUtilityCost,
         },
         create: {
           dailyOperationId: dailyOperation.id,
-          electricityConsumption: energy.electricityConsumption ?? 0,
-          electricityUnitPrice: energy.electricityUnitPrice ?? 0,
-          electricityCost: Math.round(electricityCost * 100) / 100,
-          waterConsumption: energy.waterConsumption ?? 0,
-          waterUnitPrice: energy.waterUnitPrice ?? 0,
-          waterCost: Math.round(waterCost * 100) / 100,
-          gasConsumption: energy.gasConsumption ?? 0,
-          gasUnitPrice: energy.gasUnitPrice ?? 0,
-          gasCost: Math.round(gasCost * 100) / 100,
-          totalUtilityCost:
-            Math.round(electricityCost * 100) / 100 +
-            Math.round(waterCost * 100) / 100 +
-            Math.round(gasCost * 100) / 100,
+          electricityConsumption,
+          electricityUnitPrice,
+          electricityCost,
+          waterConsumption,
+          waterUnitPrice,
+          waterCost,
+          gasConsumption,
+          gasUnitPrice,
+          gasCost,
+          totalUtilityCost,
         },
       });
     }
