@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 
 interface Region {
   id: string;
@@ -81,12 +82,12 @@ export default function RegionDashboard() {
               <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
                 区域总监
               </span>
-              <a
+              <Link
                 href="/api/auth/signout"
                 className="text-sm text-gray-500 hover:text-gray-700"
               >
                 退出登录
-              </a>
+              </Link>
             </div>
           </div>
         </div>

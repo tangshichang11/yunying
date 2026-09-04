@@ -126,12 +126,12 @@ export default function ReviewListPage() {
               <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
                 {session?.user?.role === 'ADMIN' ? '管理员' : session?.user?.role === 'REGIONAL_DIRECTOR' ? '区域总监' : '用户'}
               </span>
-              <a
+              <Link
                 href="/api/auth/signout"
                 className="text-sm text-gray-500 hover:text-gray-700"
               >
                 退出登录
-              </a>
+              </Link>
             </div>
           </div>
         </div>

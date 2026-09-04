@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { getAuthUser } from '@/lib/api-auth';
-import { DailyOperationStatus } from '@prisma/client';
 
 /**
  * GET /api/regional/review
@@ -21,25 +20,21 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const statusParam = searchParams.get('status') as DailyOperationStatus || 'SUBMITTED';
-
-    // Validate status is a valid DailyOperationStatus
-    const validStatuses: DailyOperationStatus[] = ['DRAFT', 'SUBMITTED', 'REJECTED', 'APPROVED'];
-    const status: DailyOperationStatus = validStatuses.includes(statusParam) ? statusParam : 'SUBMITTED';
+    const statusParam = searchParams.get('status');
 
     console.log('User:', authUser.role, authUser.regionId);
 
-    // 先简单查询，看看问题在哪里
-    const operations = await prisma.dailyOperation.findMany({
-      where: { status },
-      take: 5,
-    });
+    // 构建查询条件
+    const whereClause: { status?: 'DRAFT' | 'SUBMITTED' | 'REJECTED' | 'APPROVED' } = {};
+    if (statusParam && ['DRAFT', 'SUBMITTED', 'REJECTED', 'APPROVED'].includes(statusParam)) {
+      whereClause.status = statusParam as 'DRAFT' | 'SUBMITTED' | 'REJECTED' | 'APPROVED';
+    } else {
+      whereClause.status = 'SUBMITTED';
+    }
 
-    console.log('Operations found:', operations.length);
-
-    // 如果上面的查询成功，再尝试带 include 的查询
+    // 查询日经营记录
     const dailyOperations = await prisma.dailyOperation.findMany({
-      where: { status },
+      where: whereClause,
       include: {
         hotel: {
           include: {
@@ -53,6 +48,8 @@ export async function GET(request: NextRequest) {
         submittedAt: 'desc',
       },
     });
+
+    console.log('Operations found:', dailyOperations.length);
 
     return NextResponse.json({
       success: true,

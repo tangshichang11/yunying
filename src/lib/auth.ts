@@ -95,7 +95,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      session.user = {
+      // Cast to any to avoid NextAuth v5 type issues with custom fields
+      const customSession = session as any;
+      customSession.user = {
         id: token.id,
         username: token.username,
         name: token.name,
