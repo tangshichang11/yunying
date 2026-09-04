@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { getAuthUser } from '@/lib/api-auth';
+import { DailyOperationStatus } from '@prisma/client';
 
 /**
  * GET /api/regional/review
@@ -20,7 +21,11 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const status = searchParams.get('status') || 'SUBMITTED';
+    const statusParam = searchParams.get('status') as DailyOperationStatus || 'SUBMITTED';
+
+    // Validate status is a valid DailyOperationStatus
+    const validStatuses: DailyOperationStatus[] = ['DRAFT', 'SUBMITTED', 'REJECTED', 'APPROVED'];
+    const status: DailyOperationStatus = validStatuses.includes(statusParam) ? statusParam : 'SUBMITTED';
 
     console.log('User:', authUser.role, authUser.regionId);
 
