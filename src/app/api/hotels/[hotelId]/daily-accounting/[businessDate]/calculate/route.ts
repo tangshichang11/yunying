@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { calculateDailyAccounting, detectRevenueAnomalies, detectCostAnomalies } from '@/lib/accounting';
+import { requireHotelAccess } from '@/lib/api-auth';
 
 interface Params {
   params: Promise<{
@@ -16,6 +17,12 @@ interface Params {
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { hotelId, businessDate } = await params;
+
+    // 权限检查
+    const authUser = await requireHotelAccess(hotelId);
+    if (authUser instanceof NextResponse) {
+      return authUser;
+    }
 
     // 解析日期
     const date = new Date(businessDate);
@@ -226,6 +233,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
       // 创建新异常
       for (const anomaly of [...revenueAnomalies, ...costAnomalies]) {
+        const fieldLabel = anomaly.field === 'totalRevenue' ? '收入' : '成本';
         await prisma.anomaly.create({
           data: {
             dailyOperationId: dailyOperation.id,
@@ -236,7 +244,7 @@ export async function POST(request: NextRequest, { params }: Params) {
             actualValue: anomaly.actualValue,
             deviation: anomaly.actualValue - anomaly.expectedValue,
             deviationRate: anomaly.deviationRate,
-            description: `${anomaly.field} 异常: 实际值 ${anomaly.actualValue} vs 预期值 ${anomaly.expectedValue}`,
+            description: `${fieldLabel}异常: 实际值 ¥${anomaly.actualValue.toFixed(2)} vs 预期值 ¥${anomaly.expectedValue.toFixed(2)} (偏差 ${(anomaly.deviationRate * 100).toFixed(1)}%)`,
           },
         });
       }
@@ -258,14 +266,17 @@ export async function POST(request: NextRequest, { params }: Params) {
         avgRoomRate: result.avgRoomRate,
         revpar: result.revpar,
       },
-      anomalies: [...revenueAnomalies, ...costAnomalies].map(a => ({
-        type: a.field === 'totalRevenue' ? 'REVENUE' : 'COST',
-        severity: a.severity,
-        message: `${a.field} 异常: 实际 ${a.actualValue} vs 预期 ${a.expectedValue}`,
-        actualValue: a.actualValue,
-        expectedValue: a.expectedValue,
-        deviationRate: a.deviationRate,
-      })),
+      anomalies: [...revenueAnomalies, ...costAnomalies].map(a => {
+        const fieldLabel = a.field === 'totalRevenue' ? '收入' : '成本';
+        return {
+          type: a.field === 'totalRevenue' ? 'REVENUE' : 'COST',
+          severity: a.severity,
+          message: `${fieldLabel}异常: 实际值 ¥${a.actualValue.toFixed(2)} vs 预期值 ¥${a.expectedValue.toFixed(2)}`,
+          actualValue: a.actualValue,
+          expectedValue: a.expectedValue,
+          deviationRate: a.deviationRate,
+        };
+      }),
     });
   } catch (error) {
     console.error('Error calculating daily accounting:', error);

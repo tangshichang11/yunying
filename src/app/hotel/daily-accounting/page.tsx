@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 
 // Types
 interface Hotel {
@@ -136,21 +138,21 @@ const STATUS_LABELS: Record<Status, { label: string; color: string }> = {
   APPROVED: { label: '已审核', color: 'bg-green-100 text-green-800' },
 };
 
-// Mock data for demo - in production this would come from auth session
-const MOCK_HOTEL_ID = 'cmthyo9ho000414p9l1pl4ifx';
-const MOCK_HOTEL = {
-  id: 'cmthyo9ho000414p9l1pl4ifx',
-  code: 'LK-YZ-001',
-  name: '龙口悦致酒店',
-  physicalRoomCount: 120,
-  regionName: '龙口区域',
-};
-
 export default function DailyAccountingPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+
   // Get today's date as default
   const today = new Date().toISOString().split('T')[0];
   const [businessDate, setBusinessDate] = useState(today);
-  const [hotelId] = useState(MOCK_HOTEL_ID);
+  const [hotelId, setHotelId] = useState<string | null>(null);
 
   const [data, setData] = useState<DailyAccountingData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -159,6 +161,18 @@ export default function DailyAccountingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Get hotelId from URL params first (for admin selecting hotels), then fallback to session
+  useEffect(() => {
+    // Check URL search params first
+    const params = new URLSearchParams(window.location.search);
+    const urlHotelId = params.get('hotelId');
+    if (urlHotelId) {
+      setHotelId(urlHotelId);
+    } else if (session?.user?.hotelId) {
+      setHotelId(session.user.hotelId);
+    }
+  }, [session]);
 
   // Form state
   const [revenue, setRevenue] = useState<Revenue>({
@@ -215,6 +229,8 @@ export default function DailyAccountingPage() {
 
   // Fetch data
   const fetchData = useCallback(async () => {
+    if (!hotelId) return;
+
     setLoading(true);
     setError(null);
     try {
@@ -224,8 +240,6 @@ export default function DailyAccountingPage() {
       }
       const json = await res.json();
 
-      // Use mock hotel if API returns no hotel
-      json.hotel = MOCK_HOTEL;
       setData(json);
 
       // Update form state
@@ -280,8 +294,10 @@ export default function DailyAccountingPage() {
   // Fetch data on mount and when hotelId/businessDate changes
   // This is a valid pattern for initial data loading in React
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchData();
+    if (hotelId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchData();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hotelId, businessDate]);
 
@@ -405,9 +421,9 @@ export default function DailyAccountingPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                {MOCK_HOTEL.name}
+                {data?.hotel?.name || '加载中...'}
               </h1>
-              <p className="text-gray-500">{MOCK_HOTEL.regionName}</p>
+              <p className="text-gray-500">{data?.hotel?.regionName || '-'}</p>
             </div>
             <div className="flex items-center gap-4">
               <div>

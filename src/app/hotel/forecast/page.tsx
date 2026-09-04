@@ -73,6 +73,7 @@ export default function ForecastPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<number>(0);
+  const [generateModalValue, setGenerateModalValue] = useState<string>('');
 
   // 校验状态
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -134,6 +135,13 @@ export default function ForecastPage() {
     }
   }, [hotel, loadForecast]);
 
+  // 初始化智能生成弹窗的值
+  useEffect(() => {
+    if (isGenerateModalOpen && forecastMonth) {
+      setGenerateModalValue(forecastMonth.monthlyRevenueForecast > 0 ? String(forecastMonth.monthlyRevenueForecast) : '');
+    }
+  }, [isGenerateModalOpen, forecastMonth]);
+
   // 校验 Forecast
   const validateForecast = (data: ForecastMonth) => {
     const errors: string[] = [];
@@ -185,7 +193,7 @@ export default function ForecastPage() {
   };
 
   // 智能生成每日 Forecast
-  const handleGenerate = async () => {
+  const handleGenerateWithValue = async (monthlyValue: number) => {
     if (!hotel || !forecastMonth) return;
 
     try {
@@ -195,7 +203,7 @@ export default function ForecastPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            monthlyForecast: forecastMonth.monthlyRevenueForecast,
+            monthlyForecast: monthlyValue,
           }),
         }
       );
@@ -204,11 +212,16 @@ export default function ForecastPage() {
         const result = await response.json();
         setForecastMonth(result.data);
         validateForecast(result.data);
-        setIsGenerateModalOpen(false);
       }
     } catch (error) {
       console.error('Error generating forecast:', error);
     }
+  };
+
+  // 兼容旧的手动触发方式
+  const handleGenerate = async () => {
+    if (!hotel || !forecastMonth) return;
+    await handleGenerateWithValue(forecastMonth.monthlyRevenueForecast);
   };
 
   // 更新月度总额
@@ -698,29 +711,46 @@ export default function ForecastPage() {
                 月度业绩预定
               </label>
               <input
-                type="number"
-                value={forecastMonth?.monthlyRevenueForecast || 0}
-                onChange={(e) => {
-                  if (forecastMonth) {
-                    setForecastMonth({
-                      ...forecastMonth,
-                      monthlyRevenueForecast: parseFloat(e.target.value) || 0,
-                    });
-                  }
-                }}
+                type="text"
+                value={generateModalValue}
+                onChange={(e) => setGenerateModalValue(e.target.value)}
+                placeholder="请输入月度业绩预定金额"
                 className="w-full border rounded px-3 py-2"
+                autoFocus
               />
+              {!generateModalValue && (
+                <p className="mt-2 text-sm text-red-600">
+                  请先设置月度业绩预定金额，再进行智能生成
+                </p>
+              )}
             </div>
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => setIsGenerateModalOpen(false)}
+                onClick={() => {
+                  setIsGenerateModalOpen(false);
+                  setGenerateModalValue('');
+                }}
                 className="px-4 py-2 border rounded hover:bg-gray-50"
               >
                 取消
               </button>
               <button
-                onClick={handleGenerate}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                onClick={() => {
+                  if (generateModalValue && forecastMonth) {
+                    const newValue = parseFloat(generateModalValue) || 0;
+                    if (newValue > 0) {
+                      setForecastMonth({
+                        ...forecastMonth,
+                        monthlyRevenueForecast: newValue,
+                      });
+                      handleGenerateWithValue(newValue);
+                      setIsGenerateModalOpen(false);
+                      setGenerateModalValue('');
+                    }
+                  }
+                }}
+                disabled={!generateModalValue}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 生成
               </button>

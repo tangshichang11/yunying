@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { requireHotelAccess, getAuthUser } from '@/lib/api-auth';
 
 interface Params {
   params: Promise<{
@@ -16,6 +17,17 @@ export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { hotelId, businessDate } = await params;
     const body = await request.json();
+
+    // 权限检查
+    const authUser = await requireHotelAccess(hotelId);
+    if (authUser instanceof NextResponse) {
+      return authUser;
+    }
+
+    // 只有 ADMIN 和 REGIONAL_DIRECTOR 可以驳回
+    if (authUser.role !== 'ADMIN' && authUser.role !== 'REGIONAL_DIRECTOR') {
+      return NextResponse.json({ error: '权限不足' }, { status: 403 });
+    }
 
     // 解析日期
     const date = new Date(businessDate);
@@ -68,7 +80,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       data: {
         status: 'REJECTED',
         reviewedAt: now,
-        reviewedBy: 'regional-director', // TODO: 从 session 获取实际用户ID
+        reviewedBy: authUser.id,
         rejectionReason: reason.trim(),
       },
     });
@@ -81,7 +93,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         action: 'REJECT',
         oldValue: { status: dailyOperation.status },
         newValue: { status: 'REJECTED', reason: reason.trim() },
-        operatorId: 'regional-director', // TODO: 从 session 获取实际用户ID
+        operatorId: authUser.id,
         ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
         timestamp: now,
       },

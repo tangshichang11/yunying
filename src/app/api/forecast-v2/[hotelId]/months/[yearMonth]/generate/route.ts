@@ -47,8 +47,19 @@ export async function POST(
       );
     }
 
-    // 使用算法生成每日 Forecast
-    const monthlyForecast = Number(forecastMonth.monthlyRevenueForecast);
+    // 使用请求体中的 monthlyForecast 值，并更新数据库
+    const monthlyForecast = Number(body.monthlyForecast);
+
+    // 更新数据库中的月度总额
+    await prisma.forecastMonth.update({
+      where: { id: forecastMonth.id },
+      data: {
+        monthlyRevenueForecast: monthlyForecast,
+        status: ForecastMonthStatus.DRAFT,
+        rejectionReason: null,
+      },
+    });
+
     const dailyResults = generateDailyForecast(
       yearMonth,
       monthlyForecast
@@ -84,13 +95,9 @@ export async function POST(
       })
     );
 
-    // 更新月度 Forecast 的月度总额（以防万一）
-    const updatedMonth = await prisma.forecastMonth.update({
+    // 获取更新后的月度 Forecast
+    const updatedMonth = await prisma.forecastMonth.findUnique({
       where: { id: forecastMonth.id },
-      data: {
-        status: ForecastMonthStatus.DRAFT,
-        rejectionReason: null,
-      },
       include: {
         dailyForecasts: {
           orderBy: { businessDate: 'asc' },

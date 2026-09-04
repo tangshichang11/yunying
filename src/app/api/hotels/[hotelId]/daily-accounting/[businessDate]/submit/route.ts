@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { requireHotelAccess, getAuthUser } from '@/lib/api-auth';
 
 interface Params {
   params: Promise<{
@@ -15,6 +16,12 @@ interface Params {
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { hotelId, businessDate } = await params;
+
+    // 权限检查
+    const authUser = await requireHotelAccess(hotelId);
+    if (authUser instanceof NextResponse) {
+      return authUser;
+    }
 
     // 解析日期
     const date = new Date(businessDate);
@@ -173,7 +180,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       data: {
         status: 'SUBMITTED',
         submittedAt: now,
-        submittedBy: 'hotel-manager', // TODO: 从session获取实际用户ID
+        submittedBy: authUser.id,
       },
     });
 
@@ -185,7 +192,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         action: 'SUBMIT',
         oldValue: { status: dailyOperation.status },
         newValue: { status: 'SUBMITTED' },
-        operatorId: 'hotel-manager', // TODO: 从session获取实际用户ID
+        operatorId: authUser.id,
         ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
         timestamp: now,
       },

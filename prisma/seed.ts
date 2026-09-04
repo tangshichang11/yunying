@@ -1,4 +1,5 @@
 import { PrismaClient, DailyOperationStatus } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -36,30 +37,52 @@ async function main() {
   });
   console.log('Created hotel:', hotel.name);
 
-  // Create users
+  // Create admin user
+  const hashedPassword = await bcrypt.hash('admin123', 10);
+  const adminUser = await prisma.user.create({
+    data: {
+      username: 'admin',
+      name: '系统管理员',
+      email: 'admin@huiyou.com',
+      password: hashedPassword,
+      role: 'ADMIN',
+      hotelId: hotel.id,
+      regionId: region.id,
+      status: 'ACTIVE',
+    },
+  });
+  console.log('Created admin user (username: admin, password: admin123)');
+
+  // Create regional director user
+  const directorPassword = await bcrypt.hash('director123', 10);
+  const regionalDirector = await prisma.user.create({
+    data: {
+      username: 'director',
+      name: '李总监',
+      email: 'li.director@huiyou.com',
+      password: directorPassword,
+      role: 'REGIONAL_DIRECTOR',
+      regionId: region.id,
+      status: 'ACTIVE',
+    },
+  });
+  console.log('Created regional director (username: director, password: director123)');
+
+  // Create hotel manager user
+  const managerPassword = await bcrypt.hash('manager123', 10);
   const hotelManager = await prisma.user.create({
     data: {
+      username: 'manager',
       name: '张店长',
       email: 'zhang.manager@huiyou.com',
-      password: 'hashed_password_here',
+      password: managerPassword,
       role: 'HOTEL_MANAGER',
       hotelId: hotel.id,
       regionId: region.id,
       status: 'ACTIVE',
     },
   });
-
-  const regionalDirector = await prisma.user.create({
-    data: {
-      name: '李总监',
-      email: 'li.director@huiyou.com',
-      password: 'hashed_password_here',
-      role: 'REGIONAL_DIRECTOR',
-      regionId: region.id,
-      status: 'ACTIVE',
-    },
-  });
-  console.log('Created users');
+  console.log('Created hotel manager (username: manager, password: manager123)');
 
   // Create monthly target for September 2026
   const monthlyTarget = await prisma.monthlyTarget.create({

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { requireHotelAccess } from '@/lib/api-auth';
 
 interface Params {
   params: Promise<{
@@ -15,6 +16,12 @@ interface Params {
 export async function GET(request: NextRequest, { params }: Params) {
   try {
     const { hotelId, businessDate } = await params;
+
+    // 权限检查
+    const authUser = await requireHotelAccess(hotelId);
+    if (authUser instanceof NextResponse) {
+      return authUser;
+    }
 
     // 解析日期
     const date = new Date(businessDate);

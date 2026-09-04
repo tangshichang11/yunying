@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 
 // Types
 interface ReviewItem {
@@ -42,21 +43,27 @@ const STATUS_LABELS: Record<Status, { label: string; color: string }> = {
   APPROVED: { label: '已审核', color: 'bg-green-100 text-green-800' },
 };
 
-// Mock region ID for demo - in production this would come from auth session
-const MOCK_REGION_ID = 'cmtgxss9u0002rcsvjxxjbhi9';
-
 export default function ReviewListPage() {
+  const { data: session, status: sessionStatus } = useSession();
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<Status>('SUBMITTED');
+
+  // Build query URL based on user role
+  const buildQueryUrl = useCallback(() => {
+    let url = `/api/regional/review?status=${statusFilter}`;
+    // ADMIN can see all, REGIONAL_DIRECTOR is filtered by API based on session
+    return url;
+  }, [statusFilter]);
 
   // Fetch data
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/regional/review?status=${statusFilter}&regionId=${MOCK_REGION_ID}`);
+      const url = buildQueryUrl();
+      const res = await fetch(url);
       if (!res.ok) {
         throw new Error('Failed to fetch data');
       }
@@ -67,11 +74,13 @@ export default function ReviewListPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [buildQueryUrl]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (sessionStatus === 'authenticated') {
+      fetchData();
+    }
+  }, [sessionStatus, fetchData]);
 
   // Format currency
   const formatCurrency = (value: number) => {
@@ -106,8 +115,25 @@ export default function ReviewListPage() {
       {/* Header */}
       <div className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-6">
-          <h1 className="text-2xl font-bold text-gray-900">待审核列表</h1>
-          <p className="text-gray-500">区域运营总监审核</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">待审核列表</h1>
+              <p className="text-gray-500">
+                欢迎，{session?.user?.name || '用户'}
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+                {session?.user?.role === 'ADMIN' ? '管理员' : session?.user?.role === 'REGIONAL_DIRECTOR' ? '区域总监' : '用户'}
+              </span>
+              <a
+                href="/api/auth/signout"
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                退出登录
+              </a>
+            </div>
+          </div>
         </div>
       </div>
 
